@@ -38,21 +38,28 @@ This project demonstrates deployment of a secure and highly available 3-tier web
 - Multi-AZ deployment
 - Hosted in Private Subnets
 
----
+## Key Concepts Demonstrated
+- Network segmentation and security
+- High availability across multiple AZs
+- Secure access using Bastion Host
+- Load balancing with ALB
+- Managed database with RDS
 
-## Features
-- High Availability
-- Secure Architecture
-- Multi-AZ Deployment
-- Load Balancing
-- Database Integration
+---
 
 ---
 
 ## Project Steps
+1. Created VPC with CIDR 10.0.0.0/16
+2. Set up 9 subnets across 3 Availability Zones
+3. Configured Route Tables, IGW, and NAT Gateway
+4. Deployed Bastion Host for secure access
+5. Installed LAMP stack on App Servers
+6. Configured ALB with Target Groups
+7. Set up RDS MySQL with Multi-AZ and phpMyAdmin
 Detailed implementation steps available in:
 
-```text
+```
 project-steps.txt
 ```
 
