@@ -1,35 +1,418 @@
-# AWS 3-Tier Web Application Project
+================================================================
+   DEPLOY A 3-TIER WEB APPLICATION ON AWS
+   AWS Services: VPC | EC2 | ALB | RDS | NAT Gateway | Bastion Host
+================================================================
 
-## Project Overview
-This project demonstrates deployment of a 3-tier web application architecture on AWS.
+----------------------------------------------------------------
+ ARCHITECTURE OVERVIEW
+----------------------------------------------------------------
 
-## Services Used
-- VPC
-- EC2
-- ALB
-- RDS
-- NAT Gateway
-- Internet Gateway
-- Bastion Host
+ WEB TIER (Public Subnet)
+ => Responsible for presenting information to the user via a web interface.
+ => Consists of a web server that receives requests from the user's browser.
+ => Handles user interactions and displays data to the user.
+ => Components: Application Load Balancer (ALB)
 
-## Architecture Diagram
+ APPLICATION TIER (Private Subnet)
+ => Responsible for processing user requests and generating responses.
+ => Consists of application servers running business logic (LAMP Stack).
+ => Implements business logic and application workflows.
+ => Components: EC2 Instances (app-server-1, app-server-2)
 
-![Architecture](architecture-diagram.jpeg)
+ DATA TIER (Private Subnet)
+ => Responsible for storing and retrieving data.
+ => Consists of database servers storing structured data.
+ => Ensures data consistency and efficient access to data.
+ => Components: Amazon RDS MySQL (Multi-AZ)
 
-## Web Tier
-- Application Load Balancer
-- Public Subnets
+================================================================
+ STEP 1: CREATE VPC
+================================================================
 
-## Application Tier
-- EC2 Instances
-- Apache + PHP
+ Name       : project-vpc
+ CIDR Block : 10.0.0.0/16
+ Tenancy    : Default
 
-## Database Tier
-- RDS MySQL
-- Multi-AZ
+ After creation:
+ - Select the VPC → Click "Edit Settings"
+ - Enable DNS Hostnames → Save
 
-## Features
-- Highly Available Architecture
-- Secure Private Subnets
-- Load Balancing
-- Database Integration
+================================================================
+ STEP 2: CREATE INTERNET GATEWAY (IGW)
+================================================================
+
+ Name: my-igw
+
+ - Click Create
+ - Attach to project-vpc
+
+================================================================
+ STEP 3: CREATE 9 SUBNETS
+================================================================
+
+ PUBLIC SUBNETS (Web Tier)
+ -----------------------------------------------------------------
+ 1. public-subnet-AZ1-web
+    AZ   : ap-south-1a
+    CIDR : 10.0.0.0/24
+
+ 2. public-subnet-AZ2-web
+    AZ   : ap-south-1b
+    CIDR : 10.0.1.0/24
+
+ 3. public-subnet-AZ3-web
+    AZ   : ap-south-1c
+    CIDR : 10.0.2.0/24
+
+ PRIVATE SUBNETS (Application Tier)
+ -----------------------------------------------------------------
+ 4. private-subnet-AZ1-app
+    AZ   : ap-south-1a
+    CIDR : 10.0.3.0/24
+
+ 5. private-subnet-AZ2-app
+    AZ   : ap-south-1b
+    CIDR : 10.0.4.0/24
+
+ 6. private-subnet-AZ3-app
+    AZ   : ap-south-1c
+    CIDR : 10.0.5.0/24
+
+ PRIVATE SUBNETS (Database Tier)
+ -----------------------------------------------------------------
+ 7. private-subnet-AZ1-db
+    AZ   : ap-south-1a
+    CIDR : 10.0.6.0/24
+
+ 8. private-subnet-AZ2-db
+    AZ   : ap-south-1b
+    CIDR : 10.0.7.0/24
+
+ 9. private-subnet-AZ3-db
+    AZ   : ap-south-1c
+    CIDR : 10.0.8.0/24
+
+ NOTE: Enable Auto-assign Public IPv4 Address on all 3 PUBLIC subnets.
+
+================================================================
+ STEP 4: CREATE ROUTE TABLES
+================================================================
+
+ 1. public-web-RT      → For public subnets (Web Tier)
+ 2. private-app-RT     → For private subnets (App Tier)
+ 3. private-db-RT      → For private subnets (DB Tier)
+
+================================================================
+ STEP 5: CREATE NAT GATEWAY
+================================================================
+
+ Name              : nat-gateway-AZ1-web
+ Subnet            : public-subnet-AZ1-web
+ Connectivity Type : Public
+ Elastic IP        : Click "Allocate Elastic IP"
+
+ → Click Create
+
+================================================================
+ STEP 6: CONFIGURE PUBLIC ROUTE TABLE (public-web-RT)
+================================================================
+
+ ADD ROUTE:
+ - Destination : 0.0.0.0/0
+ - Target      : my-igw (Internet Gateway)
+ - Save changes
+
+ ASSOCIATE SUBNETS:
+ - Click "Edit Subnet Associations"
+ - Select all 3 public subnets
+ - Save changes
+
+================================================================
+ STEP 7: CONFIGURE PRIVATE APP ROUTE TABLE (private-app-RT)
+================================================================
+
+ ADD ROUTE:
+ - Destination : 0.0.0.0/0
+ - Target      : nat-gateway-AZ1-web
+ - Save changes
+
+ ASSOCIATE SUBNETS:
+ - Click "Edit Subnet Associations"
+ - Select all 3 private app subnets
+ - Save changes
+
+================================================================
+ STEP 8: CONFIGURE PRIVATE DB ROUTE TABLE (private-db-RT)
+================================================================
+
+ ADD ROUTE:
+ - Destination : 0.0.0.0/0
+ - Target      : nat-gateway-AZ1-web
+ - Save changes
+
+ ASSOCIATE SUBNETS:
+ - Click "Edit Subnet Associations"
+ - Select all 3 private DB subnets
+ - Save changes
+
+================================================================
+ STEP 9: CREATE BASTION HOST
+================================================================
+
+ What is a Bastion Host?
+ => A server that provides secure access to private servers
+    that are NOT directly accessible from the internet.
+ => Acts as a jump server to connect to App Tier EC2 instances.
+
+ EC2 Configuration:
+ - Name           : bastion-host
+ - OS             : Amazon Linux 2
+ - Instance Type  : t2.micro
+ - Key Pair       : bastion-key
+ - VPC            : project-vpc
+ - Subnet         : public-subnet-AZ1-web
+ - Public IP      : Enable
+
+ Security Group   : bastion-sg
+ Inbound Rules:
+ ┌──────────┬──────┬─────────────┐
+ │ Type     │ Port │ Source      │
+ ├──────────┼──────┼─────────────┤
+ │ SSH      │ 22   │ 0.0.0.0/0  │
+ └──────────┴──────┴─────────────┘
+
+================================================================
+ STEP 10: CREATE APP-SERVER-1
+================================================================
+
+ - Name           : app-server-1
+ - OS             : Amazon Linux 2
+ - Instance Type  : t2.micro
+ - Key Pair       : bastion-key
+ - VPC            : project-vpc
+ - Subnet         : private-subnet-AZ1-app
+ - Public IP      : Disable
+
+ Security Group   : app-server-sg
+ Inbound Rules:
+ ┌──────────┬──────┬────────────┐
+ │ Type     │ Port │ Source     │
+ ├──────────┼──────┼────────────┤
+ │ SSH      │ 22   │ bastion-sg │
+ └──────────┴──────┴────────────┘
+
+================================================================
+ STEP 11: CREATE APP-SERVER-2
+================================================================
+
+ - Name           : app-server-2
+ - OS             : Amazon Linux 2
+ - Instance Type  : t2.micro
+ - Key Pair       : bastion-key
+ - VPC            : project-vpc
+ - Subnet         : private-subnet-AZ2-app
+ - Public IP      : Disable
+ - Security Group : app-server-sg (select existing)
+
+================================================================
+ STEP 12: CONNECT TO BASTION HOST
+================================================================
+
+ Use MobaXterm / PuTTY / Git Bash / CMD:
+
+ 1. Connect to Bastion Host using its Public IP and keypair
+
+ 2. Save the keypair on Bastion Host:
+    $ vi bastion-host.pem
+    (Paste the key content → Save and Exit)
+
+ 3. Set read permissions on the key file:
+    $ chmod 400 "bastion-host.pem"
+
+ 4. SSH into App Server from Bastion Host:
+    $ ssh -i "bastion-host.pem" ec2-user@<PRIVATE-IP-OF-APP-SERVER-1>
+
+================================================================
+ STEP 13: INSTALL LAMP STACK ON APP-SERVER-1
+================================================================
+
+ 1. Update the server:
+    $ sudo yum update -y
+
+ 2. Install PHP and MariaDB dependencies:
+    $ sudo amazon-linux-extras install -y lamp-mariadb10.2-php7.2 php7.2
+
+    OR individually:
+    $ sudo amazon-linux-extras install mariadb10.5
+    $ sudo amazon-linux-extras install php8.2
+
+ 3. Install Apache Web Server:
+    $ sudo yum install -y httpd
+    $ sudo systemctl start httpd
+    $ sudo systemctl enable httpd
+    $ sudo systemctl is-enabled httpd
+
+    Verify Apache is running:
+    $ curl http://localhost
+
+ 4. Add ec2-user to Apache group:
+    $ sudo usermod -a -G apache ec2-user
+
+    NOTE: Logout and log back in to apply group membership.
+    Verify: $ groups
+
+ 5. Set directory permissions:
+    $ sudo chown -R ec2-user:apache /var/www
+    $ sudo chmod 2775 /var/www && find /var/www -type d -exec sudo chmod 2775 {} \;
+    $ find /var/www -type f -exec sudo chmod 0664 {} \;
+
+ 6. Install phpMyAdmin dependencies:
+    $ sudo yum install php-mbstring php-xml -y
+    $ sudo systemctl restart httpd
+    $ sudo systemctl restart php-fpm
+
+ 7. Download and set up phpMyAdmin:
+    $ cd /var/www/html
+    $ wget https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.tar.gz
+    $ mkdir phpMyAdmin && tar -xvzf phpMyAdmin-latest-all-languages.tar.gz -C phpMyAdmin --strip-components 1
+    $ rm phpMyAdmin-latest-all-languages.tar.gz
+
+================================================================
+ STEP 14: INSTALL LAMP STACK ON APP-SERVER-2
+================================================================
+
+ Repeat all commands from STEP 13 on app-server-2.
+
+================================================================
+ STEP 15: CREATE APPLICATION LOAD BALANCER (ALB)
+================================================================
+
+ - Name          : php-alb
+ - Scheme        : Internet-facing
+ - IP Type       : IPv4
+ - VPC           : project-vpc
+ - Subnets       : public-subnet-AZ1-web
+                   public-subnet-AZ2-web
+                   public-subnet-AZ3-web
+
+ Security Group  : alb-sg
+ Inbound Rules:
+ ┌────────────┬──────┬────────────┐
+ │ Type       │ Port │ Source     │
+ ├────────────┼──────┼────────────┤
+ │ Custom TCP │ 80   │ 0.0.0.0/0 │
+ └────────────┴──────┴────────────┘
+
+ Target Group:
+ - Target Type : Instance
+ - Name        : php-TG
+ - Register    : app-server-1 and app-server-2
+ - Click "Include as Pending Below"
+
+ After ALB creation → Update app-server-sg:
+ Add Inbound Rule:
+ ┌────────────┬──────┬────────┐
+ │ Type       │ Port │ Source │
+ ├────────────┼──────┼────────┤
+ │ Custom TCP │ 80   │ alb-sg │
+ └────────────┴──────┴────────┘
+
+================================================================
+ STEP 16: TEST THE APP SERVERS
+================================================================
+
+ On app-server-1:
+ $ cd /var/www/html
+ $ echo "my-app-server-1 is running" > index.html
+ $ cat index.html
+
+ On app-server-2:
+ $ cd /var/www/html
+ $ echo "my-app-server-2 is running" > index.html
+ $ cat index.html
+
+ Test via browser:
+ http://<ALB-DNS-NAME>/index.html
+
+ Refresh multiple times to verify load balancing between both servers.
+
+================================================================
+ STEP 17: CREATE RDS MYSQL DATABASE
+================================================================
+
+ PART A — Create DB Subnet Group:
+ - Name        : db-subnet-group
+ - VPC         : project-vpc
+ - AZs         : ap-south-1a, ap-south-1b, ap-south-1c
+ - Subnets     : Select all 3 private DB subnets
+
+ PART B — Create Database:
+ - Creation Method  : Standard Create
+ - Engine           : MySQL
+ - Template         : Dev/Test
+ - Availability     : Multi-AZ DB Instance
+ - DB Instance Name : phpapp
+ - Username         : admin
+ - Password         : admin123
+ - Instance Class   : Burstable (t class)
+ - Storage          : General Purpose SSD (gp3)
+ - Storage Autoscaling : Disabled
+ - VPC              : project-vpc
+ - Subnet Group     : db-subnet-group
+ - Public Access    : No
+ - Security Group   : db-sg (create new)
+
+ After creation → Edit db-sg Inbound Rules:
+ - Remove default rule
+ Add new rule:
+ ┌──────────────┬──────────┬──────┬───────────────┐
+ │ Type         │ Protocol │ Port │ Source        │
+ ├──────────────┼──────────┼──────┼───────────────┤
+ │ MySQL/Aurora │ TCP      │ 3306 │ app-server-sg │
+ └──────────────┴──────────┴──────┴───────────────┘
+
+================================================================
+ STEP 18: CONNECT PHPMYADMIN TO RDS
+================================================================
+
+ On app-server-1 AND app-server-2:
+
+ $ cd /var/www/html/phpMyAdmin
+ $ cp config.sample.inc.php config.inc.php
+ $ vi config.inc.php
+
+ Find this line and update the RDS endpoint:
+ $cfg['Servers'][$i]['host'] = '<PASTE-YOUR-RDS-ENDPOINT-URL>';
+
+ Save and exit.
+
+================================================================
+ STEP 19: TEST THE FULL APPLICATION
+================================================================
+
+ Open browser and navigate to:
+ http://<ALB-DNS-NAME>/phpMyAdmin
+
+ Login with:
+ - Username : admin
+ - Password : admin123
+
+ ✅ If phpMyAdmin loads successfully → Deployment is complete!
+
+================================================================
+ SECURITY GROUP SUMMARY
+================================================================
+
+ ┌─────────────────┬──────────────┬──────┬─────────────────┐
+ │ Security Group  │ Type         │ Port │ Source          │
+ ├─────────────────┼──────────────┼──────┼─────────────────┤
+ │ bastion-sg      │ SSH          │ 22   │ 0.0.0.0/0       │
+ │ app-server-sg   │ SSH          │ 22   │ bastion-sg      │
+ │ app-server-sg   │ HTTP         │ 80   │ alb-sg          │
+ │ alb-sg          │ HTTP         │ 80   │ 0.0.0.0/0       │
+ │ db-sg           │ MySQL        │ 3306 │ app-server-sg   │
+ └─────────────────┴──────────────┴──────┴─────────────────┘
+
+================================================================
+ PROJECT COMPLETED SUCCESSFULLY
+================================================================
